@@ -1,0 +1,12 @@
+fastapi[standard]==0.115.0
+faster-whisper==1.0.3
+pyannote.audio==3.3.2
+boto3==1.35.0
+sqlalchemy[asyncio]==2.0.35
+aiosqlite==0.20.0
+aiofiles==24.1.0
+python-multipart==0.0.12
+pydub==0.25.1
+torch==2.4.0
+torchaudio==2.4.0
+uvicorn[standard]==0.30.6
