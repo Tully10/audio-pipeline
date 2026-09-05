@@ -11,5 +11,6 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:////data/db/pipeline.
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "large-v3")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "auto")
 SESSION_GAP_MINUTES = int(os.getenv("SESSION_GAP_MINUTES", "2"))
+CHUNK_LENGTH_S = int(os.getenv("CHUNK_LENGTH_S", "60"))
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "eu.anthropic.claude-sonnet-4-6")
 LOW_CONFIDENCE_THRESHOLD = float(os.getenv("LOW_CONFIDENCE_THRESHOLD", "0.75"))
