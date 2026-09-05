@@ -1,6 +1,6 @@
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, BackgroundTasks, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.database import get_db
 from db.models import Chunk
@@ -9,14 +9,6 @@ import config
 from pipeline.assembler import assemble_pending
 
 router = APIRouter()
-
-
-def _check_api_key(x_api_key: str = ""):
-    if x_api_key != config.API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-
-from fastapi import Header
 
 
 @router.post("/audio/chunks", response_model=ChunkUploadResponse)
@@ -30,7 +22,8 @@ async def upload_chunk(
     x_api_key: str = Header(default=""),
     db: AsyncSession = Depends(get_db),
 ):
-    _check_api_key(x_api_key)
+    if x_api_key != config.API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
     chunk_id = str(uuid.uuid4())
     chunks_dir = os.path.join(config.AUDIO_DIR, "chunks", device_id)
@@ -53,6 +46,7 @@ async def upload_chunk(
     db.add(chunk)
     await db.commit()
 
-    background_tasks.add_task(assemble_pending, db)
+    # assemble_pending creates its own session — safe to run after request closes
+    background_tasks.add_task(assemble_pending)
 
     return ChunkUploadResponse(chunk_id=chunk_id, status="received")
