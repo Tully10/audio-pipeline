@@ -1,15 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler_view"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <EditText
+        android:id="@+id/et_search"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-    <ProgressBar android:id="@+id/progress_bar"
-        android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_gravity="center" android:visibility="gone" />
-    <TextView android:id="@+id/tv_error"
-        android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_gravity="center" android:padding="24dp" android:visibility="gone" />
-</FrameLayout>
+        android:layout_height="wrap_content"
+        android:hint="Search sessions…"
+        android:padding="14dp"
+        android:inputType="text"
+        android:imeOptions="actionSearch"
+        android:maxLines="1"
+        android:drawableStart="@android:drawable/ic_menu_search"
+        android:drawablePadding="8dp"
+        android:background="@android:color/white" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#EEEEEE" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <ProgressBar android:id="@+id/progress_bar"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="center" android:visibility="gone" />
+
+        <TextView android:id="@+id/tv_error"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="center" android:padding="24dp" android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>
