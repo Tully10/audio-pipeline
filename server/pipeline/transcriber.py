@@ -1,13 +1,16 @@
 import os
 import json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 from db.models import Session as SessionModel, Word, Marker
 import config
 from pipeline import job_queue
 
 _whisper_model = None
-_whisper_status = "idle"  # idle / processing / down
+_whisper_status = "idle"
+_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def get_whisper_status() -> str:
@@ -29,6 +32,23 @@ def _get_model():
     return _whisper_model
 
 
+def _run_whisper(audio_path: str) -> list:
+    """CPU-bound — runs in thread executor."""
+    model = _get_model()
+    segments, _ = model.transcribe(audio_path, word_timestamps=True, language=None)
+    words = []
+    for segment in segments:
+        if segment.words:
+            for w in segment.words:
+                words.append({
+                    "word": w.word.strip(),
+                    "start": w.start,
+                    "end": w.end,
+                    "probability": w.probability,
+                })
+    return words
+
+
 async def transcribe_session(session_id: str, db: AsyncSession):
     global _whisper_status
     result = await db.execute(select(SessionModel).where(SessionModel.id == session_id))
@@ -38,19 +58,8 @@ async def transcribe_session(session_id: str, db: AsyncSession):
 
     _whisper_status = "processing"
     try:
-        model = _get_model()
-        segments, _ = model.transcribe(session.audio_path, word_timestamps=True, language=None)
-
-        words = []
-        for segment in segments:
-            if segment.words:
-                for w in segment.words:
-                    words.append({
-                        "word": w.word.strip(),
-                        "start": w.start,
-                        "end": w.end,
-                        "probability": w.probability,
-                    })
+        loop = asyncio.get_event_loop()
+        words = await loop.run_in_executor(_executor, _run_whisper, session.audio_path)
 
         word_rows = []
         for idx, w in enumerate(words):
@@ -68,7 +77,6 @@ async def transcribe_session(session_id: str, db: AsyncSession):
 
         await db.flush()
 
-        # Populate FTS5
         from sqlalchemy import text
         for row in word_rows:
             await db.execute(
@@ -76,7 +84,6 @@ async def transcribe_session(session_id: str, db: AsyncSession):
                 {"rid": row.id, "word": row.word, "sid": session_id, "start_s": row.start_s}
             )
 
-        # Load markers from sidecar
         sidecar = session.audio_path + ".markers.json"
         if os.path.exists(sidecar):
             with open(sidecar) as f:

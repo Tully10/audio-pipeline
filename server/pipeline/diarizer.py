@@ -1,3 +1,5 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from db.models import Session as SessionModel, Word
@@ -5,6 +7,7 @@ import config
 from pipeline import job_queue
 
 _pipeline = None
+_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def _get_pipeline():
@@ -18,16 +21,21 @@ def _get_pipeline():
     return _pipeline
 
 
+def _run_diarize(audio_path: str):
+    """CPU-bound — runs in thread executor."""
+    pipeline = _get_pipeline()
+    return pipeline(audio_path)
+
+
 async def diarize_session(session_id: str, db: AsyncSession):
     result = await db.execute(select(SessionModel).where(SessionModel.id == session_id))
     session = result.scalar_one_or_none()
     if not session or not session.audio_path:
         return
 
-    pipeline = _get_pipeline()
-    diarization = pipeline(session.audio_path)
+    loop = asyncio.get_event_loop()
+    diarization = await loop.run_in_executor(_executor, _run_diarize, session.audio_path)
 
-    # Build speaker map: list of (start, end, speaker)
     turns = [(turn.start, turn.end, speaker) for turn, _, speaker in diarization.itertracks(yield_label=True)]
     speakers_seen = set(s for _, _, s in turns)
 
