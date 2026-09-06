@@ -2,14 +2,15 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from db.database import init_db
+from db.database import init_db, AsyncSessionLocal
+from db.models import Session as SessionModel
+from sqlalchemy import select
 from api import chunks, sessions, search, ask, status, health
 from pipeline import job_queue
 
 
 async def _worker():
     """Background worker that drains the job queue."""
-    from db.database import AsyncSessionLocal
     while True:
         job = await job_queue.get()
         try:
@@ -32,11 +33,27 @@ async def _worker():
             job_queue.task_done()
 
 
+async def _recover_sessions():
+    """Re-enqueue any sessions left in-flight from before a restart."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(SessionModel).where(
+                SessionModel.status.in_(["transcribing", "diarizing"])
+            )
+        )
+        in_flight = result.scalars().all()
+        for s in in_flight:
+            job_type = "transcribe" if s.status == "transcribing" else "diarize"
+            await job_queue.put((job_type, s.id))
+        if in_flight:
+            print(f"[startup] re-enqueued {len(in_flight)} in-flight sessions")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    # Pre-load Whisper model in background to avoid cold start on first chunk
     asyncio.create_task(_worker())
+    await _recover_sessions()
     yield
 
 
