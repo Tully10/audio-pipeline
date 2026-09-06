@@ -3,8 +3,11 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths: ['app/**']
+    paths: ['app/**', '.github/workflows/build-apk.yml']
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -19,8 +22,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.6"
 
       - name: Build debug APK
         working-directory: app
@@ -34,3 +35,13 @@ jobs:
           name: AudioCapture-debug
           path: app/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          body: Debug APK built from latest main commit.
+          files: app/app/build/outputs/apk/debug/app-debug.apk
+          prerelease: true
+          make_latest: true
