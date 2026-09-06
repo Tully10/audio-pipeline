@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -15,6 +16,26 @@ _executor = ThreadPoolExecutor(max_workers=1)
 
 def get_whisper_status() -> str:
     return _whisper_status
+
+
+def _normalize_audio(input_path: str) -> str:
+    """Loudness-normalize and downsample to 16kHz for Whisper.
+    Returns path to normalized file, or original if ffmpeg fails."""
+    out_path = input_path + ".norm.wav"
+    result = subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", input_path,
+            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+            "-ar", "16000",
+            "-ac", "1",
+            out_path,
+        ],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return out_path
+    print(f"[transcriber] ffmpeg loudnorm failed, using original: {result.stderr.decode()[-200:]}")
+    return input_path
 
 
 def _get_model():
@@ -34,19 +55,24 @@ def _get_model():
 
 def _run_whisper(audio_path: str) -> list:
     """CPU-bound — runs in thread executor."""
-    model = _get_model()
-    segments, _ = model.transcribe(audio_path, word_timestamps=True, language=None)
-    words = []
-    for segment in segments:
-        if segment.words:
-            for w in segment.words:
-                words.append({
-                    "word": w.word.strip(),
-                    "start": w.start,
-                    "end": w.end,
-                    "probability": w.probability,
-                })
-    return words
+    norm_path = _normalize_audio(audio_path)
+    try:
+        model = _get_model()
+        segments, _ = model.transcribe(norm_path, word_timestamps=True, language=None)
+        words = []
+        for segment in segments:
+            if segment.words:
+                for w in segment.words:
+                    words.append({
+                        "word": w.word.strip(),
+                        "start": w.start,
+                        "end": w.end,
+                        "probability": w.probability,
+                    })
+        return words
+    finally:
+        if norm_path != audio_path and os.path.exists(norm_path):
+            os.remove(norm_path)
 
 
 async def transcribe_session(session_id: str, db: AsyncSession):
