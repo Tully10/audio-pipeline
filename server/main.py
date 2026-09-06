@@ -35,16 +35,20 @@ async def _worker():
 
 async def _recover_sessions():
     """Re-enqueue any sessions left in-flight from before a restart."""
+    job_map = {
+        "transcribing": "transcribe",
+        "diarizing": "diarize",
+        "processing": "process",
+    }
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(SessionModel).where(
-                SessionModel.status.in_(["transcribing", "diarizing"])
+                SessionModel.status.in_(list(job_map.keys()))
             )
         )
         in_flight = result.scalars().all()
         for s in in_flight:
-            job_type = "transcribe" if s.status == "transcribing" else "diarize"
-            await job_queue.put((job_type, s.id))
+            await job_queue.put((job_map[s.status], s.id))
         if in_flight:
             print(f"[startup] re-enqueued {len(in_flight)} in-flight sessions")
 
