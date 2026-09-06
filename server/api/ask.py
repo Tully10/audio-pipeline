@@ -1,5 +1,5 @@
 import json
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from db.database import get_db
@@ -11,7 +11,14 @@ router = APIRouter()
 
 
 @router.post("/ask", response_model=AskResponse)
-async def ask(body: AskRequest, db: AsyncSession = Depends(get_db)):
+async def ask(
+    body: AskRequest,
+    db: AsyncSession = Depends(get_db),
+    x_api_key: str = Header(default=""),
+):
+    if x_api_key != config.API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
     result = await db.execute(
         text("""
             SELECT snippet(fts_transcripts, 0, '', '', '...', 40) as quote,
@@ -28,13 +35,13 @@ async def ask(body: AskRequest, db: AsyncSession = Depends(get_db)):
         return AskResponse(answer="No relevant transcripts found.", sources=[])
 
     context = "\n\n".join(
-        f"[Session {r.session_id} @ {r.start_s:.1f}s]: {r.quote}"
+        f"[Session {r.session_id[:8]} @ {r.start_s:.1f}s]: {r.quote}"
         for r in rows
     )
 
     prompt = (
         f"Answer this question based on the transcript excerpts below. "
-        f"Cite the session_id for each claim.\n\nQuestion: {body.q}\n\nExcerpts:\n{context}"
+        f"Cite the session ID for each claim.\n\nQuestion: {body.q}\n\nExcerpts:\n{context}"
     )
 
     client = boto3.client("bedrock-runtime", region_name=config.AWS_DEFAULT_REGION)

@@ -49,6 +49,7 @@ async def list_sessions(
             summary=s.summary,
             people=people,
             status=s.status,
+            sentiment=s.sentiment,
         ))
     return out
 
@@ -84,6 +85,7 @@ async def get_transcript(
         entities=[EntityOut(name=e.name, type=e.entity_type) for e in entities],
         action_items=[a.text for a in action_items],
         markers=[MarkerOut(offset_s=m.offset_s, label=m.label) for m in markers],
+        sentiment=session.sentiment,
     )
 
 

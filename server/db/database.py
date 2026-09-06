@@ -19,3 +19,12 @@ async def init_db():
             CREATE VIRTUAL TABLE IF NOT EXISTS fts_transcripts
             USING fts5(word, session_id UNINDEXED, start_s UNINDEXED, content=words, content_rowid=id)
         """))
+        # Migrate columns added after initial deployment
+        for ddl in [
+            "ALTER TABLE sessions ADD COLUMN sentiment TEXT",
+            "ALTER TABLE sessions ADD COLUMN session_type TEXT DEFAULT 'ambient'",
+        ]:
+            try:
+                await conn.execute(text(ddl))
+            except Exception:
+                pass  # column already exists

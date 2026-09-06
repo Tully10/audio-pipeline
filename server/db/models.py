@@ -36,6 +36,8 @@ class Session(Base):
     speaker_count = Column(Integer, default=0)
     summary = Column(Text, nullable=True)
     people_json = Column(Text, default="[]")
+    sentiment = Column(Text, nullable=True)  # JSON: {sentiment, tone, energy, key_moments}
+    session_type = Column(String, default="ambient")  # ambient/meeting/call/talk
     created_at = Column(DateTime, default=datetime.utcnow)
     words = relationship("Word", back_populates="session", cascade="all, delete-orphan")
     entities = relationship("Entity", back_populates="session", cascade="all, delete-orphan")

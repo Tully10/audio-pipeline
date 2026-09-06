@@ -52,6 +52,15 @@ async def write_session_vault(session_id: str, mindmap_code: str, db: AsyncSessi
     speakers = list(set(w.speaker for w in words))
     people = json.loads(session.people_json or "[]")
 
+    # Parse sentiment
+    sentiment_data = {}
+    if session.sentiment:
+        try:
+            sentiment_data = json.loads(session.sentiment)
+        except Exception:
+            pass
+
+    # Build diarised transcript lines
     lines = []
     if words:
         cur_speaker = words[0].speaker
@@ -87,6 +96,18 @@ async def write_session_vault(session_id: str, mindmap_code: str, db: AsyncSessi
     if mindmap_code and mindmap_code.strip():
         mindmap_section = f"## Mind Map\n```mermaid\n{mindmap_code}\n```\n"
 
+    sentiment_section = ""
+    if sentiment_data:
+        sent = sentiment_data.get("sentiment", "")
+        tone = sentiment_data.get("tone", "")
+        energy = sentiment_data.get("energy", "")
+        key_moments = sentiment_data.get("key_moments", [])
+        if sent or tone:
+            sentiment_section = f"## Tone & Sentiment\n**{sent}** · {tone} · {energy} energy\n"
+            if key_moments:
+                sentiment_section += "\n**Key moments:**\n" + "\n".join(f"- {m}" for m in key_moments) + "\n"
+            sentiment_section += "\n"
+
     note = f"""---
 date: {date_str}
 time: {time_str}
@@ -94,6 +115,9 @@ duration_s: {duration_s}
 speakers: {json.dumps(speakers)}
 people: {json.dumps(people)}
 action_items_count: {len(action_items)}
+sentiment: {sentiment_data.get('sentiment', '')}
+ton: {sentiment_data.get('tone', '')}
+session_type: {session.session_type or 'ambient'}
 ---
 
 # Session — {time_str} · {duration_s // 60}m
@@ -101,13 +125,13 @@ action_items_count: {len(action_items)}
 ## Summary
 {session.summary or '_Not yet generated._'}
 
-{mindmap_section}## Action Items
+{sentiment_section}{mindmap_section}## Action Items
 {action_items_text}
 
 ## Transcript
 {transcript_text}
 
-## Markers (⚑ Important)
+## Markers (⧑ Important)
 {markers_text}
 """
 
@@ -117,6 +141,7 @@ action_items_count: {len(action_items)}
     with open(note_path, "w") as f:
         f.write(note)
 
+    # People graph
     people_dir = os.path.join(config.VAULT_DIR, "People")
     os.makedirs(people_dir, exist_ok=True)
     for entity in entities:
@@ -130,8 +155,9 @@ action_items_count: {len(action_items)}
                 f.write(f"\n{session_link}")
         else:
             with open(person_path, "w") as f:
-                f.write(f"---\nname: {entity.name}\nfirst_seen: {date_str}\nsession_count: 1\n---\n\n# {entity.name}\n\n## Sessions\n{session_link}\n")
+                f.write(f"---\nname: {entity.name}\nfirst_seen: {date_str}\n---\n\n# {entity.name}\n\n## Sessions\n{session_link}\n")
 
+    # Rolling action items
     if action_items:
         ai_path = os.path.join(config.VAULT_DIR, "Action-Items", "open.md")
         os.makedirs(os.path.dirname(ai_path), exist_ok=True)
@@ -140,6 +166,7 @@ action_items_count: {len(action_items)}
             for a in action_items:
                 f.write(f"- [ ] {a.text}\n")
 
+    # Important moments
     if markers:
         im_path = os.path.join(config.VAULT_DIR, "Important-Moments", "open.md")
         os.makedirs(os.path.dirname(im_path), exist_ok=True)

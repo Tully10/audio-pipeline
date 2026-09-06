@@ -24,6 +24,7 @@ class SessionOut(BaseModel):
     summary: Optional[str]
     people: List[str]
     status: str
+    sentiment: Optional[str] = None
 
 
 class WordEntry(BaseModel):
@@ -52,6 +53,7 @@ class TranscriptResponse(BaseModel):
     entities: List[EntityOut]
     action_items: List[str]
     markers: List[MarkerOut]
+    sentiment: Optional[str] = None
 
 
 class CorrectionRequest(BaseModel):
