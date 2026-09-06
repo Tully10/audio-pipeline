@@ -43,7 +43,6 @@ async def write_session_vault(session_id: str, mindmap_code: str, db: AsyncSessi
     date_str = started_dt.strftime("%Y-%m-%d")
     time_str = started_dt.strftime("%H:%M")
 
-    # Compute duration
     if session.ended_at:
         ended_dt = datetime.fromisoformat(session.ended_at.replace("Z", ""))
         duration_s = int((ended_dt - started_dt).total_seconds())
@@ -53,7 +52,6 @@ async def write_session_vault(session_id: str, mindmap_code: str, db: AsyncSessi
     speakers = list(set(w.speaker for w in words))
     people = json.loads(session.people_json or "[]")
 
-    # Build transcript lines grouped by speaker turns
     lines = []
     if words:
         cur_speaker = words[0].speaker
@@ -85,6 +83,10 @@ async def write_session_vault(session_id: str, mindmap_code: str, db: AsyncSessi
 
     action_items_text = "\n".join(f"- [ ] {a.text}" for a in action_items) or "_(none)_"
 
+    mindmap_section = ""
+    if mindmap_code and mindmap_code.strip():
+        mindmap_section = f"## Mind Map\n```mermaid\n{mindmap_code}\n```\n"
+
     note = f"""---
 date: {date_str}
 time: {time_str}
@@ -99,12 +101,7 @@ action_items_count: {len(action_items)}
 ## Summary
 {session.summary or '_Not yet generated._'}
 
-## Mind Map
-```mermaid
-{mindmap_code}
-```
-
-## Action Items
+{mindmap_section}## Action Items
 {action_items_text}
 
 ## Transcript
@@ -120,7 +117,6 @@ action_items_count: {len(action_items)}
     with open(note_path, "w") as f:
         f.write(note)
 
-    # Upsert People notes
     people_dir = os.path.join(config.VAULT_DIR, "People")
     os.makedirs(people_dir, exist_ok=True)
     for entity in entities:
@@ -136,7 +132,6 @@ action_items_count: {len(action_items)}
             with open(person_path, "w") as f:
                 f.write(f"---\nname: {entity.name}\nfirst_seen: {date_str}\nsession_count: 1\n---\n\n# {entity.name}\n\n## Sessions\n{session_link}\n")
 
-    # Append to Action-Items/open.md
     if action_items:
         ai_path = os.path.join(config.VAULT_DIR, "Action-Items", "open.md")
         os.makedirs(os.path.dirname(ai_path), exist_ok=True)
@@ -145,7 +140,6 @@ action_items_count: {len(action_items)}
             for a in action_items:
                 f.write(f"- [ ] {a.text}\n")
 
-    # Append to Important-Moments/open.md
     if markers:
         im_path = os.path.join(config.VAULT_DIR, "Important-Moments", "open.md")
         os.makedirs(os.path.dirname(im_path), exist_ok=True)
