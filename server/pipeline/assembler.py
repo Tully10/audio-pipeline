@@ -10,6 +10,8 @@ from db.database import AsyncSessionLocal
 import config
 from pipeline import job_queue
 
+SESSION_MAX_DURATION = timedelta(minutes=30)
+
 
 def _parse_dt(s: str) -> datetime:
     for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
@@ -62,15 +64,19 @@ async def assemble_pending():
             for prev, curr in zip(device_chunks, device_chunks[1:]):
                 prev_dt = _parse_dt(prev.recorded_at)
                 curr_dt = _parse_dt(curr.recorded_at)
-                if curr_dt - prev_dt > gap:
+                group_start_dt = _parse_dt(current_group[0].recorded_at)
+                silence_gap = curr_dt - prev_dt > gap
+                duration_exceeded = curr_dt - group_start_dt >= SESSION_MAX_DURATION
+                if silence_gap or duration_exceeded:
                     groups.append(current_group)
                     current_group = [curr]
                 else:
                     current_group.append(curr)
 
             if current_group:
+                first_dt = _parse_dt(current_group[0].recorded_at)
                 last_dt = _parse_dt(current_group[-1].recorded_at)
-                if now - last_dt > gap or now - last_dt > timedelta(minutes=30):
+                if now - last_dt > gap or last_dt - first_dt >= SESSION_MAX_DURATION:
                     groups.append(current_group)
 
             for group in groups:
@@ -102,9 +108,8 @@ async def _assemble_group(group: list[Chunk], device_id: str, db: AsyncSession):
         _write_wav_header(f, num_samples, sample_rate=sample_rate)
         f.write(pcm_data)
 
-    # Map chunk-relative marker offsets to session timeline
     all_markers = []
-    chunk_duration_s = config.CHUNK_LENGTH_S  # configurable, default 60
+    chunk_duration_s = config.CHUNK_LENGTH_S
     for i, chunk in enumerate(group):
         for m in json.loads(chunk.markers_json or "[]"):
             all_markers.append({
