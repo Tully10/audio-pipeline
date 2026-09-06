@@ -10,3 +10,4 @@ pydub==0.25.1
 torch==2.4.0
 torchaudio==2.4.0
 uvicorn[standard]==0.30.6
+huggingface_hub<0.25.0

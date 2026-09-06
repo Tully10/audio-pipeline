@@ -13,7 +13,7 @@ def _get_pipeline():
         from pyannote.audio import Pipeline
         _pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=config.HUGGINGFACE_TOKEN
+            token=config.HUGGINGFACE_TOKEN
         )
     return _pipeline
 
