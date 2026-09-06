@@ -18,5 +18,6 @@ data class TranscriptResponse(
     val summary: String?,
     val entities: List<Entity>,
     val action_items: List<String>,
-    val markers: List<Marker>
+    val markers: List<Marker>,
+    val sentiment: String? = null
 )

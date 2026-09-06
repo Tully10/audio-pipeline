@@ -1,5 +1,6 @@
 package com.nocturne.audiocapture.ui
 
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -29,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 @OptIn(UnstableApi::class)
 class SessionPlaybackActivity : AppCompatActivity() {
@@ -66,15 +68,52 @@ class SessionPlaybackActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     binding.progressBar.visibility = View.GONE
-                    binding.tvError.text = "Failed: ${e.message}"; binding.tvError.visibility = View.VISIBLE
+                    binding.tvError.text = "Failed: ${e.message}"
+                    binding.tvError.visibility = View.VISIBLE
                 }
             }
         }
     }
 
     private fun setupPlayback(t: TranscriptResponse) {
-        words = t.words; markers = t.markers
-        wordAdapter = WordAdapter(words, onTap = { seekToWord(it) }, onLongPress = { idx, txt -> showCorrection(idx, txt) })
+        // Populate summary card
+        if (!t.summary.isNullOrEmpty()) {
+            binding.tvSummaryText.text = t.summary
+            if (t.action_items.isNotEmpty()) {
+                binding.tvActionItemsLabel.visibility = View.VISIBLE
+                binding.tvActionItems.text = t.action_items.joinToString("\n") { "• $it" }
+                binding.tvActionItems.visibility = View.VISIBLE
+            }
+            if (!t.sentiment.isNullOrEmpty()) {
+                try {
+                    val jo = JSONObject(t.sentiment)
+                    val sent = jo.optString("sentiment", "")
+                    val tone = jo.optString("tone", "")
+                    if (sent.isNotEmpty()) {
+                        binding.tvSentimentBadge.text = "$sent · $tone"
+                        val color = when (sent.lowercase()) {
+                            "positive" -> Color.parseColor("#4CAF50")
+                            "negative" -> Color.parseColor("#F44336")
+                            "tense"    -> Color.parseColor("#FF9800")
+                            "mixed"    -> Color.parseColor("#9C27B0")
+                            else       -> Color.parseColor("#888888")
+                        }
+                        binding.tvSentimentBadge.setBackgroundColor(color)
+                        binding.tvSentimentBadge.visibility = View.VISIBLE
+                    }
+                } catch (e: Exception) { /* ignore malformed JSON */ }
+            }
+            binding.scrollSummary.visibility = View.VISIBLE
+            binding.dividerSummary.visibility = View.VISIBLE
+        }
+
+        words = t.words
+        markers = t.markers
+        wordAdapter = WordAdapter(
+            words,
+            onTap = { seekToWord(it) },
+            onLongPress = { idx, txt -> showCorrection(idx, txt) }
+        )
         binding.recyclerView.adapter = wordAdapter
 
         val totalMs = (words.lastOrNull()?.end_s?.times(1000) ?: 1.0).toLong().coerceAtLeast(1)
@@ -86,7 +125,8 @@ class SessionPlaybackActivity : AppCompatActivity() {
         val serverUrl = (prefs.getString("server_url", "http://192.168.1.100:8080") ?: "").trimEnd('/')
         val apiKey = ApiClient.getApiKey(this)
 
-        val dsFactory = DefaultHttpDataSource.Factory().setDefaultRequestProperties(mapOf("X-API-Key" to apiKey))
+        val dsFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(mapOf("X-API-Key" to apiKey))
         val mediaSource = ProgressiveMediaSource.Factory(dsFactory)
             .createMediaSource(MediaItem.fromUri("$serverUrl/sessions/$sessionId/audio"))
 
@@ -95,7 +135,8 @@ class SessionPlaybackActivity : AppCompatActivity() {
             exo.setMediaSource(mediaSource); exo.prepare()
             exo.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (isPlaying) handler.post(syncRunnable) else handler.removeCallbacks(syncRunnable)
+                    if (isPlaying) handler.post(syncRunnable)
+                    else handler.removeCallbacks(syncRunnable)
                 }
             })
         }
