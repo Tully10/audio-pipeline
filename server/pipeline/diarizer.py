@@ -1,3 +1,4 @@
+import os
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,8 @@ from pipeline import job_queue
 
 _pipeline = None
 _executor = ThreadPoolExecutor(max_workers=1)
+
+MAX_DIARIZE_MB = 50  # skip diarization for files larger than this
 
 
 def _get_pipeline():
@@ -31,6 +34,14 @@ async def diarize_session(session_id: str, db: AsyncSession):
     result = await db.execute(select(SessionModel).where(SessionModel.id == session_id))
     session = result.scalar_one_or_none()
     if not session or not session.audio_path:
+        return
+
+    file_mb = os.path.getsize(session.audio_path) / 1024 / 1024 if os.path.exists(session.audio_path) else 0
+    if file_mb > MAX_DIARIZE_MB:
+        print(f"[diarizer] skipping {session_id[:8]} ({file_mb:.0f}MB > {MAX_DIARIZE_MB}MB limit)")
+        session.status = "processing"
+        await db.commit()
+        await job_queue.put(("process", session_id))
         return
 
     loop = asyncio.get_event_loop()
