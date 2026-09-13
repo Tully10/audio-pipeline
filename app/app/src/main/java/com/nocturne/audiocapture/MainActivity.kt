@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.nocturne.audiocapture.api.ApiClient
+import com.nocturne.audiocapture.data.AppDatabase
 import com.nocturne.audiocapture.databinding.ActivityMainBinding
 import com.nocturne.audiocapture.service.RecordingService
 import com.nocturne.audiocapture.ui.AskActivity
@@ -99,9 +100,18 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: Exception) {
+                val localCount = AppDatabase.getInstance(this@MainActivity)
+                    .chunkDao().getPendingCount()
                 withContext(Dispatchers.Main) {
-                    binding.tvRecordingState.text = "Server unreachable"
-                    binding.tvStats.text = ""
+                    binding.tvRecordingState.text = "Server offline"
+                    binding.tvStats.text = if (localCount > 0) "$localCount chunks queued locally" else ""
+                    if (localCount > 0) {
+                        binding.btnUploadNow.visibility = View.VISIBLE
+                        binding.btnUploadNow.isEnabled = true
+                        binding.btnUploadNow.text = "Upload when ready ($localCount queued)"
+                    } else {
+                        binding.btnUploadNow.visibility = View.GONE
+                    }
                 }
             }
         }
