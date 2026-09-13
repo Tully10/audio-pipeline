@@ -12,7 +12,7 @@ interface ChunkDao {
     @Query("SELECT * FROM chunks WHERE status = 'PENDING' ORDER BY chunkSeq ASC")
     suspend fun getPending(): List<ChunkEntity>
 
-    @Query("SELECT COUNT(*) FROM chunks WHERE status IN ('PENDING', 'UPLOADING')")
+    @Query("SELECT COUNT(*) FROM chunks WHERE status IN ('PENDING', 'UPLOADING', 'FAILED')")
     suspend fun getPendingCount(): Int
 
     @Query("UPDATE chunks SET status = :status WHERE id = :id")
@@ -23,4 +23,7 @@ interface ChunkDao {
 
     @Query("DELETE FROM chunks WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("UPDATE chunks SET status = 'PENDING', retryCount = 0 WHERE status = 'FAILED'")
+    suspend fun resetFailed()
 }

@@ -18,7 +18,6 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -29,6 +28,9 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (prefs.getBoolean("wifi_only", true) && !isOnWifi()) return@withContext Result.retry()
 
         val db = AppDatabase.getInstance(applicationContext)
+        // Re-queue any chunks stranded as FAILED by older builds (safe no-op if none exist)
+        db.chunkDao().resetFailed()
+
         val serverUrl = (prefs.getString("server_url", "http://192.168.1.100:8080") ?: "").trimEnd('/')
         val apiKey = getApiKey()
         val deviceId = Settings.Secure.getString(applicationContext.contentResolver, Settings.Secure.ANDROID_ID)
@@ -54,15 +56,19 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     db.chunkDao().updateStatus(chunk.id, "UPLOADED"); file.delete()
                 } else {
                     db.chunkDao().updateStatus(chunk.id, "PENDING")
-                    db.chunkDao().incrementRetry(chunk.id)
-                    if (chunk.retryCount >= 5) db.chunkDao().updateStatus(chunk.id, "FAILED")
+                    // Only exhaust retries on 4xx — server explicitly rejected this chunk
+                    // (bad data, auth error, etc.). 5xx is a server-side error; keep retrying.
+                    if (response.code in 400..499) {
+                        db.chunkDao().incrementRetry(chunk.id)
+                        if (chunk.retryCount >= 5) db.chunkDao().updateStatus(chunk.id, "FAILED")
+                    }
                 }
                 response.close()
             } catch (e: Exception) {
+                // Network unreachable — transient. Reset to PENDING without counting as a retry
+                // so chunks are never permanently stranded while the server is offline.
                 Log.e("UploadWorker", "Upload failed for chunk ${chunk.id}", e)
                 db.chunkDao().updateStatus(chunk.id, "PENDING")
-                db.chunkDao().incrementRetry(chunk.id)
-                if (chunk.retryCount >= 5) db.chunkDao().updateStatus(chunk.id, "FAILED")
             }
         }
         Result.success()
