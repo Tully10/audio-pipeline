@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
+    private lateinit var updateManager: UpdateManager
     private val handler = Handler(Looper.getMainLooper())
     private val pollInterval = 30_000L
 
@@ -39,6 +40,20 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        updateManager = UpdateManager(this)
+
+        binding.btnUpdate.setOnClickListener {
+            if (!updateManager.canInstallUnknownApps()) {
+                updateManager.openInstallUnknownAppsSettings()
+                return@setOnClickListener
+            }
+            binding.btnUpdate.isEnabled = false
+            CoroutineScope(Dispatchers.Main).launch {
+                updateManager.downloadAndInstall { msg -> binding.btnUpdate.text = msg }
+                binding.btnUpdate.isEnabled = true
+                binding.btnUpdate.text = "Update app"
+            }
+        }
 
         val recordingPrefs = PreferenceManager.getDefaultSharedPreferences(this)
         binding.switchRecordingEnabled.isChecked = recordingPrefs.getBoolean("recording_enabled", true)
