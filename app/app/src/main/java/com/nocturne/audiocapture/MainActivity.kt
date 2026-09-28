@@ -13,6 +13,7 @@ import android.view.inputmethod.EditorInfo
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.preference.PreferenceManager
 import com.nocturne.audiocapture.api.ApiClient
 import com.nocturne.audiocapture.data.AppDatabase
 import com.nocturne.audiocapture.databinding.ActivityMainBinding
@@ -38,6 +39,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        val recordingPrefs = PreferenceManager.getDefaultSharedPreferences(this)
+        binding.switchRecordingEnabled.isChecked = recordingPrefs.getBoolean("recording_enabled", true)
+        binding.switchRecordingEnabled.setOnCheckedChangeListener { _, isChecked ->
+            recordingPrefs.edit().putBoolean("recording_enabled", isChecked).apply()
+            val action = if (isChecked) RecordingService.ACTION_START_RECORDING
+                         else RecordingService.ACTION_STOP_RECORDING
+            startService(Intent(this, RecordingService::class.java).setAction(action))
+        }
 
         binding.btnSessions.setOnClickListener {
             startActivity(Intent(this, SessionListActivity::class.java))

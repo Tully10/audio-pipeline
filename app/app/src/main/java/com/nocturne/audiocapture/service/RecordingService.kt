@@ -47,6 +47,8 @@ class RecordingService : Service() {
         const val NOTIFICATION_ID = 1
         const val ACTION_PAUSE = "com.nocturne.audiocapture.ACTION_PAUSE"
         const val ACTION_RESUME = "com.nocturne.audiocapture.ACTION_RESUME"
+        const val ACTION_STOP_RECORDING = "com.nocturne.audiocapture.ACTION_STOP_RECORDING"
+        const val ACTION_START_RECORDING = "com.nocturne.audiocapture.ACTION_START_RECORDING"
         private const val SAMPLE_RATE = 48000
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
@@ -56,6 +58,7 @@ class RecordingService : Service() {
     private var recordingThread: Thread? = null
     @Volatile private var isRecording = false
     @Volatile private var isPaused = false
+    @Volatile private var isEnabled = true
     @Volatile private var cachedPendingCount = 0
     @Volatile private var chunkOffsetSeconds = 0.0
 
@@ -106,10 +109,25 @@ class RecordingService : Service() {
         when (intent?.action) {
             ACTION_PAUSE -> { isPaused = true; updateNotification(); return START_STICKY }
             ACTION_RESUME -> { isPaused = false; updateNotification(); return START_STICKY }
+            ACTION_STOP_RECORDING -> {
+                isEnabled = false
+                prefs.edit().putBoolean("recording_enabled", false).apply()
+                stopRecordingHardware()
+                updateNotification()
+                return START_STICKY
+            }
+            ACTION_START_RECORDING -> {
+                isEnabled = true
+                prefs.edit().putBoolean("recording_enabled", true).apply()
+                if (!isRecording) startRecording()
+                updateNotification()
+                return START_STICKY
+            }
         }
         if (!isRecording) {
+            isEnabled = prefs.getBoolean("recording_enabled", true)
             startForeground(NOTIFICATION_ID, buildNotification())
-            startRecording()
+            if (isEnabled) startRecording()
         }
         return START_STICKY
     }
@@ -156,6 +174,16 @@ class RecordingService : Service() {
             }
             closeAndEnqueueChunk()
         }, "RecordingThread").also { it.start() }
+    }
+
+    private fun stopRecordingHardware() {
+        if (!isRecording) return
+        isRecording = false
+        audioRecord?.stop()
+        recordingThread?.join(2000)
+        audioRecord?.release()
+        audioRecord = null
+        recordingThread = null
     }
 
     private fun lockToBuiltInMic() {
@@ -223,12 +251,24 @@ class RecordingService : Service() {
     private fun buildNotification(): Notification {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val mainPi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), flags)
-        val (label, serviceIntent) = if (isPaused)
-            "Resume" to Intent(this, RecordingService::class.java).setAction(ACTION_RESUME)
-        else
-            "Pause" to Intent(this, RecordingService::class.java).setAction(ACTION_PAUSE)
+        val (label, serviceIntent, text) = when {
+            !isEnabled -> Triple(
+                "Enable",
+                Intent(this, RecordingService::class.java).setAction(ACTION_START_RECORDING),
+                "Disabled · $cachedPendingCount chunks pending"
+            )
+            isPaused -> Triple(
+                "Resume",
+                Intent(this, RecordingService::class.java).setAction(ACTION_RESUME),
+                "⏸ Paused"
+            )
+            else -> Triple(
+                "Pause",
+                Intent(this, RecordingService::class.java).setAction(ACTION_PAUSE),
+                "● Recording · $cachedPendingCount chunks pending"
+            )
+        }
         val togglePi = PendingIntent.getService(this, 1, serviceIntent, flags)
-        val text = if (isPaused) "⏸ Paused" else "● Recording · $cachedPendingCount chunks pending"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("Audio Capture").setContentText(text)
@@ -242,9 +282,7 @@ class RecordingService : Service() {
     }
 
     override fun onDestroy() {
-        isRecording = false
-        audioRecord?.stop(); audioRecord?.release()
-        recordingThread?.join(2000)
+        stopRecordingHardware()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(headsetReceiver)
         unregisterReceiver(controlReceiver)
         super.onDestroy()
